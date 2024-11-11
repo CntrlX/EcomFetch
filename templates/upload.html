@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Excel Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .upload-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .upload-btn:hover {
+            background-color: #45a049;
+        }
+        .file-input {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Excel Website Processor</h1>
+    <div class="upload-container">
+        <h2>Upload Excel File</h2>
+        <form method="post" enctype="multipart/form-data">
+            <div class="file-input">
+                <input type="file" name="file" accept=".xlsx">
+            </div>
+            <input type="submit" value="Process File" class="upload-btn">
+        </form>
+    </div>
+    <div>
+        <h3>Instructions:</h3>
+        <p>1. Upload an Excel file (.xlsx format)</p>
+        <p>2. The file should contain a column with website URLs</p>
+        <p>3. The processed file will be automatically downloaded when ready</p>
+    </div>
+</body>
+</html> 

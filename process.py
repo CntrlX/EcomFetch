@@ -3,6 +3,20 @@ import requests
 from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor
 import time
+from flask import Flask, render_template, request, send_file, Response
+import os
+from werkzeug.utils import secure_filename
+import queue
+import threading
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['log_queue'] = queue.Queue()
+app.config['processing_complete'] = threading.Event()
+
+# Create uploads folder if it doesn't exist
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 def load_excel_data(file_path):
     """
@@ -231,23 +245,22 @@ def process_websites(df_with_websites, website_column):
     normal_sites = []
     total = len(df_with_websites)
     
-    print(f"\nProcessing {total} websites...")
+    log_message(f"Processing {total} websites...")
     
     def process_row(row):
         url = row[website_column]
         if isinstance(url, str) and url.strip():
-            print(f"\nChecking: {url}")
+            log_message(f"Checking: {url}")
             if is_ecommerce_site(url):
-                print(f"✓ E-commerce site found: {url}")
+                log_message(f"✓ E-commerce site found: {url}")
                 ecommerce_sites.append(row)
             else:
-                print(f"× Not an e-commerce site: {url}")
+                log_message(f"× Not an e-commerce site: {url}")
                 normal_sites.append(row)
-                
-    # Process websites with progress tracking
+    
     with ThreadPoolExecutor(max_workers=5) as executor:
         list(executor.map(process_row, df_with_websites.to_dict('records')))
-        
+    
     return pd.DataFrame(ecommerce_sites), pd.DataFrame(normal_sites)
 
 def save_to_excel(no_website_df, normal_website_df, ecommerce_df, output_file):
@@ -263,40 +276,140 @@ def save_to_excel(no_website_df, normal_website_df, ecommerce_df, output_file):
     except Exception as e:
         print(f"Error saving Excel file: {e}")
 
-def main():
-    # Input and output file paths
-    input_file = 'input_data.xlsx'  # Replace with your input file path
-    output_file = 'processed_data.xlsx'  # Replace with your desired output file path
+def log_message(message):
+    """Add message to the log queue"""
+    app.config['log_queue'].put(message)
+
+@app.route('/', methods=['GET', 'POST'])
+def upload_file():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return 'No file uploaded', 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return 'No file selected', 400
+        
+        if file and file.filename.endswith('.xlsx'):
+            filename = secure_filename(file.filename)
+            input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            
+            # Save uploaded file
+            file.save(input_path)
+            
+            # Process the file
+            df = load_excel_data(input_path)
+            if df is None:
+                return 'Error loading Excel file', 400
+            
+            # Try to automatically identify website column
+            website_columns = ['website', 'Website', 'web', 'Web', 'url', 'URL', 'link', 'Link']
+            website_column = None
+            for col in website_columns:
+                if col in df.columns:
+                    website_column = col
+                    break
+            
+            if website_column is None:
+                # If column not found, show column selection page
+                return render_template('select_column.html', 
+                                    columns=list(df.columns),
+                                    filename=filename)
+            
+            return process_excel_file(input_path, website_column)
+            
+        return 'Invalid file type. Please upload an Excel file.', 400
     
-    # Load data
-    print("Loading data...")
-    df = load_excel_data(input_file)
+    return render_template('upload.html')
+
+@app.route('/process', methods=['POST'])
+def process_with_column():
+    website_column = request.form.get('website_column')
+    filename = request.form.get('filename')
+    
+    if not website_column or not filename:
+        return 'Missing required parameters', 400
+    
+    # Reset processing state
+    app.config['processing_complete'].clear()
+    while not app.config['log_queue'].empty():
+        app.config['log_queue'].get()
+    
+    return render_template('processing.html', 
+                         filename=filename,
+                         website_column=website_column)
+
+@app.route('/start_processing', methods=['POST'])
+def start_processing():
+    filename = request.form.get('filename')
+    website_column = request.form.get('website_column')
+    
+    if not filename or not website_column:
+        return 'Missing parameters', 400
+    
+    input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f'processed_{filename}')
+    
+    try:
+        df = load_excel_data(input_path)
+        if df is None:
+            return 'Error loading Excel file', 400
+        
+        # Process the data
+        has_website_df, no_website_df = separate_by_website(df, website_column)
+        ecommerce_df, normal_website_df = process_websites(has_website_df, website_column)
+        
+        # Save results
+        save_to_excel(no_website_df, normal_website_df, ecommerce_df, output_path)
+        
+        app.config['processing_complete'].set()
+        
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f'processed_{filename}'
+        )
+    
+    except Exception as e:
+        log_message(f"Error: {str(e)}")
+        app.config['processing_complete'].set()
+        return 'Processing error', 500
+
+@app.route('/stream_logs')
+def stream_logs():
+    def generate():
+        while not app.config['processing_complete'].is_set() or not app.config['log_queue'].empty():
+            try:
+                message = app.config['log_queue'].get(timeout=1)
+                yield f"data: {message}\n\n"
+            except queue.Empty:
+                continue
+        yield "data: PROCESSING_COMPLETE\n\n"
+    
+    return Response(generate(), mimetype='text/event-stream')
+
+def process_excel_file(input_path, website_column):
+    """Helper function to process the Excel file with the selected column"""
+    output_path = os.path.join(app.config['UPLOAD_FOLDER'], f'processed_{os.path.basename(input_path)}')
+    
+    df = load_excel_data(input_path)
     if df is None:
-        return
+        return 'Error loading Excel file', 400
     
-    # Get the correct website column
-    website_column = get_website_column(df)
-    print(f"\nUsing column '{website_column}' for website URLs")
-    
-    # Separate based on website presence
-    print("\nSeparating data based on website presence...")
+    # Process the data
     has_website_df, no_website_df = separate_by_website(df, website_column)
-    
-    # Process websites to identify e-commerce sites
-    print(f"\nProcessing websites to identify e-commerce sites...")
     ecommerce_df, normal_website_df = process_websites(has_website_df, website_column)
     
     # Save results
-    print("\nSaving results...")
-    save_to_excel(no_website_df, normal_website_df, ecommerce_df, output_file)
+    save_to_excel(no_website_df, normal_website_df, ecommerce_df, output_path)
     
-    # Print summary
-    print("\nProcessing Summary:")
-    print(f"Total records: {len(df)}")
-    print(f"No website: {len(no_website_df)}")
-    print(f"Normal website: {len(normal_website_df)}")
-    print(f"E-commerce website: {len(ecommerce_df)}")
+    # Return the processed file
+    return send_file(
+        output_path,
+        as_attachment=True,
+        download_name=f'processed_{os.path.basename(input_path)}'
+    )
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True)
 

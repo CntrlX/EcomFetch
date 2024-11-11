@@ -6,7 +6,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
 from urllib.parse import quote
-from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException, NoSuchElementException
 import logging
 
 logging.basicConfig(
@@ -91,16 +91,14 @@ class GoogleMapsScraper:
             # Extract name
             try:
                 name = ""
-                # Extract name
                 try:
                     result_element = self.driver.find_element(By.CSS_SELECTOR, "a.hfpxzc")
                     aria_label = result_element.get_attribute('aria-label')
                     if aria_label:
                         name = aria_label.split(' · ')[0].strip()
-                except Exception as e:
-                    print(f"Error getting name: {e}")
-                
-                # If name is not found, try other selectors
+                except NoSuchElementException as e:
+                    logging.error(f"Error getting name: {e}")
+
                 if not name:
                     name_selectors = [
                         "h1.fontHeadlineLarge", "h1.DUwDvf", "div[role='heading'][aria-level='1']",
@@ -113,10 +111,10 @@ class GoogleMapsScraper:
                             if name:
                                 break
                         except Exception as e:
-                            print(f"Error extracting name with selector {selector}: {e}")
+                            logging.error(f"Error extracting name with selector {selector}: {e}")
                 info['name'] = clean_string(name)
             except Exception as e:
-                print(f"Error getting name: {e}")
+                logging.error(f"Error getting name: {e}")
                 info['name'] = ""
 
             # Extract website
@@ -133,7 +131,7 @@ class GoogleMapsScraper:
                         break
                 info['website'] = clean_string(website)
             except Exception as e:
-                print(f"Error getting website: {e}")
+                logging.error(f"Error getting website: {e}")
                 info['website'] = ""
 
             # Extract address
@@ -150,7 +148,7 @@ class GoogleMapsScraper:
                         break
                 info['address'] = clean_string(address)
             except Exception as e:
-                print(f"Error getting address: {e}")
+                logging.error(f"Error getting address: {e}")
                 info['address'] = ""
 
             # Extract phone
@@ -167,7 +165,7 @@ class GoogleMapsScraper:
                         break
                 info['phone'] = clean_string(phone)
             except Exception as e:
-                print(f"Error getting phone: {e}")
+                logging.error(f"Error getting phone: {e}")
                 info['phone'] = ""
 
             # Extract rating and reviews
@@ -188,14 +186,14 @@ class GoogleMapsScraper:
                 info['rating'] = clean_string(rating)
                 info['reviews'] = clean_string(reviews)
             except Exception as e:
-                print(f"Error getting rating/reviews: {e}")
+                logging.error(f"Error getting rating/reviews: {e}")
                 info['rating'] = ""
                 info['reviews'] = ""
 
             return info
 
         except Exception as e:
-            print(f"Error extracting business info: {e}")
+            logging.error(f"Error extracting business info: {e}")
             return None
 
     def scrape(self, location, niche, max_results):
@@ -250,14 +248,6 @@ if __name__ == '__main__':
         else:
             print("\nNo data was scraped. Please check the search parameters and try again.")
     except Exception as e:
-        logging.error(f"An unexpected error occurred: {str(e)}")
+        logging.error(f"An unexpected error occurred: {e}")
     finally:
         scraper.close()
-
-
-
-
-
-
-
-

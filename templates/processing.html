@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Processing Excel File</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #log-container {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 20px 0;
+            height: 400px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            font-family: monospace;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+        #download-container {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .download-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .download-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Processing Excel File</h1>
+    <div id="log-container"></div>
+    <div id="download-container">
+        <form method="post" action="{{ url_for('start_processing') }}">
+            <input type="hidden" name="filename" value="{{ filename }}">
+            <input type="hidden" name="website_column" value="{{ website_column }}">
+            <input type="submit" value="Download Processed File" class="download-btn">
+        </form>
+    </div>
+
+    <script>
+        const logContainer = document.getElementById('log-container');
+        const downloadContainer = document.getElementById('download-container');
+        
+        // Start the processing
+        fetch("{{ url_for('start_processing') }}", {
+            method: 'POST',
+            body: new FormData(document.querySelector('form'))
+        });
+
+        // Set up event source for logs
+        const eventSource = new EventSource("{{ url_for('stream_logs') }}");
+        
+        eventSource.onmessage = function(event) {
+            if (event.data === 'PROCESSING_COMPLETE') {
+                eventSource.close();
+                downloadContainer.style.display = 'block';
+                return;
+            }
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            
+            if (event.data.includes('✓')) {
+                logEntry.classList.add('success');
+            } else if (event.data.includes('×') || event.data.includes('Error')) {
+                logEntry.classList.add('error');
+            }
+            
+            logEntry.textContent = event.data;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        };
+        
+        eventSource.onerror = function() {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry error';
+            logEntry.textContent = 'Error: Connection lost';
+            logContainer.appendChild(logEntry);
+            eventSource.close();
+        };
+    </script>
+</body>
+</html> 
