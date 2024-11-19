@@ -8,12 +8,15 @@ import os
 from werkzeug.utils import secure_filename
 import queue
 import threading
+from math import ceil
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['log_queue'] = queue.Queue()
 app.config['processing_complete'] = threading.Event()
+app.config['total_websites'] = 0
+app.config['processed_websites'] = 0
 
 # Create uploads folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -244,6 +247,8 @@ def process_websites(df_with_websites, website_column):
     ecommerce_sites = []
     normal_sites = []
     total = len(df_with_websites)
+    app.config['total_websites'] = total
+    app.config['processed_websites'] = 0
     
     log_message(f"Processing {total} websites...")
     
@@ -257,6 +262,11 @@ def process_websites(df_with_websites, website_column):
             else:
                 log_message(f"× Not an e-commerce site: {url}")
                 normal_sites.append(row)
+        
+        # Update progress
+        app.config['processed_websites'] += 1
+        progress = ceil((app.config['processed_websites'] / app.config['total_websites']) * 100)
+        log_message(f"PROGRESS:{progress}")
     
     with ThreadPoolExecutor(max_workers=5) as executor:
         list(executor.map(process_row, df_with_websites.to_dict('records')))
@@ -316,7 +326,15 @@ def upload_file():
                                     columns=list(df.columns),
                                     filename=filename)
             
-            return process_excel_file(input_path, website_column)
+            # Reset processing state
+            app.config['processing_complete'].clear()
+            while not app.config['log_queue'].empty():
+                app.config['log_queue'].get()
+            
+            # Redirect to processing page with the identified column
+            return render_template('processing.html',
+                                filename=filename,
+                                website_column=website_column)
             
         return 'Invalid file type. Please upload an Excel file.', 400
     

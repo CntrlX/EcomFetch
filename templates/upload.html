@@ -37,7 +37,7 @@
     <h1>Excel Website Processor</h1>
     <div class="upload-container">
         <h2>Upload Excel File</h2>
-        <form method="post" enctype="multipart/form-data">
+        <form method="post" action="{{ url_for('upload_file') }}" enctype="multipart/form-data">
             <div class="file-input">
                 <input type="file" name="file" accept=".xlsx">
             </div>

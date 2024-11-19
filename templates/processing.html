@@ -46,11 +46,72 @@
         .download-btn:hover {
             background-color: #45a049;
         }
+        .progress-container {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.5s ease-in-out;
+        }
+        .progress-text {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .status-container {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        #processing-status {
+            font-weight: bold;
+            color: #666;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
     <h1>Processing Excel File</h1>
+    
+    <div class="progress-container">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-text" id="progress-text">0%</div>
+    </div>
+    
+    <div class="status-container">
+        <div class="spinner" id="processing-spinner"></div>
+        <span id="processing-status">Processing websites...</span>
+    </div>
+    
     <div id="log-container"></div>
+    
     <div id="download-container">
         <form method="post" action="{{ url_for('start_processing') }}">
             <input type="hidden" name="filename" value="{{ filename }}">
@@ -62,6 +123,10 @@
     <script>
         const logContainer = document.getElementById('log-container');
         const downloadContainer = document.getElementById('download-container');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const processingStatus = document.getElementById('processing-status');
+        const processingSpinner = document.getElementById('processing-spinner');
         
         // Start the processing
         fetch("{{ url_for('start_processing') }}", {
@@ -76,6 +141,17 @@
             if (event.data === 'PROCESSING_COMPLETE') {
                 eventSource.close();
                 downloadContainer.style.display = 'block';
+                processingSpinner.style.display = 'none';
+                processingStatus.textContent = 'Processing complete!';
+                processingStatus.style.color = '#4CAF50';
+                return;
+            }
+            
+            // Handle progress updates
+            if (event.data.startsWith('PROGRESS:')) {
+                const progress = parseInt(event.data.split(':')[1]);
+                progressFill.style.width = `${progress}%`;
+                progressText.textContent = `${progress}%`;
                 return;
             }
             
@@ -98,6 +174,9 @@
             logEntry.className = 'log-entry error';
             logEntry.textContent = 'Error: Connection lost';
             logContainer.appendChild(logEntry);
+            processingSpinner.style.display = 'none';
+            processingStatus.textContent = 'Error: Connection lost';
+            processingStatus.style.color = '#f44336';
             eventSource.close();
         };
     </script>
