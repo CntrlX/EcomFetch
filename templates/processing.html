@@ -112,26 +112,44 @@
     
     <div id="log-container"></div>
     
-    <div id="download-container">
-        <form method="post" action="{{ url_for('start_processing') }}">
-            <input type="hidden" name="filename" value="{{ filename }}">
-            <input type="hidden" name="website_column" value="{{ website_column }}">
-            <input type="submit" value="Download Processed File" class="download-btn">
-        </form>
+    <div id="download-container" style="display: none;">
+        <a href="#" id="download-link" class="download-btn">Download Processed File</a>
     </div>
 
     <script>
         const logContainer = document.getElementById('log-container');
         const downloadContainer = document.getElementById('download-container');
+        const downloadLink = document.getElementById('download-link');
         const progressFill = document.getElementById('progress-fill');
         const progressText = document.getElementById('progress-text');
         const processingStatus = document.getElementById('processing-status');
         const processingSpinner = document.getElementById('processing-spinner');
         
-        // Start the processing
+        // Start the processing and get the response as blob
         fetch("{{ url_for('start_processing') }}", {
             method: 'POST',
-            body: new FormData(document.querySelector('form'))
+            body: new FormData(new FormData())
+        }).then(response => {
+            if (response.ok) {
+                return response.blob();
+            }
+            throw new Error('Processing failed');
+        }).then(blob => {
+            // Create download URL
+            const url = window.URL.createObjectURL(blob);
+            downloadLink.href = url;
+            downloadLink.download = 'processed_{{ filename }}';
+            
+            // Show download button when processing is complete
+            downloadContainer.style.display = 'block';
+            processingSpinner.style.display = 'none';
+            processingStatus.textContent = 'Processing complete!';
+            processingStatus.style.color = '#4CAF50';
+        }).catch(error => {
+            console.error('Error:', error);
+            processingSpinner.style.display = 'none';
+            processingStatus.textContent = 'Error processing file';
+            processingStatus.style.color = '#f44336';
         });
 
         // Set up event source for logs
@@ -140,10 +158,6 @@
         eventSource.onmessage = function(event) {
             if (event.data === 'PROCESSING_COMPLETE') {
                 eventSource.close();
-                downloadContainer.style.display = 'block';
-                processingSpinner.style.display = 'none';
-                processingStatus.textContent = 'Processing complete!';
-                processingStatus.style.color = '#4CAF50';
                 return;
             }
             
