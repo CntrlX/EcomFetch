@@ -125,10 +125,15 @@
         const processingStatus = document.getElementById('processing-status');
         const processingSpinner = document.getElementById('processing-spinner');
         
+        // Create FormData with the required parameters
+        const formData = new FormData();
+        formData.append('filename', '{{ filename }}');
+        formData.append('website_column', '{{ website_column }}');
+        
         // Start the processing and get the response as blob
         fetch("{{ url_for('start_processing') }}", {
             method: 'POST',
-            body: new FormData(new FormData())
+            body: formData
         }).then(response => {
             if (response.ok) {
                 return response.blob();
